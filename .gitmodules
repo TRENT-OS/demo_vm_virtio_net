@@ -1,0 +1,6 @@
+[submodule "camkes-vm-images"]
+	path = camkes-vm-images
+	url = ../../ext/camkes-vm-images.git
+[submodule "camkes-vm-linux"]
+	path = camkes-vm-linux
+	url = ../../ext/camkes-vm-linux.git
