@@ -208,7 +208,7 @@ void handle_recv_data(
         char ip_packet[ETHERMTU];
         memcpy(ip_packet, recv_data + sizeof(struct ethhdr), recv_data_size - sizeof(struct ethhdr));
         print_ip_packet(ip_packet, recv_data_size - sizeof(struct ethhdr));
-        create_icmp_req_reply(recv_data, recv_data_size);;
+        create_icmp_req_reply(recv_data, recv_data_size);
     }
 }
 
