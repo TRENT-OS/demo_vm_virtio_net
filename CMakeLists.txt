@@ -16,12 +16,12 @@ set(LibUtilsDefaultZfLogLevel 2 CACHE STRING "")
 set(KernelArmHypervisorSupport ON CACHE BOOL "" FORCE)
 set(KernelArmVtimerUpdateVOffset OFF CACHE BOOL "" FORCE)
 set(KernelArmDisableWFIWFETraps ON CACHE BOOL "" FORCE)
+
+# VMM Feature Settings
 set(LibUSB OFF CACHE BOOL "" FORCE)
-set(VmInitRdFile ON CACHE BOOL "" FORCE)
-#set(VmVirtioConsole ON CACHE BOOL "" FORCE)
-set(CapDLLoaderMaxObjects 8192 CACHE STRING "" FORCE)
-set(VmVirtioNetVirtqueue ON CACHE BOOL "" FORCE)
 set(VmPCISupport ON CACHE BOOL "" FORCE)
+set(VmVirtioConsole OFF CACHE BOOL "" FORCE)
+set(VmVirtioNetVirtqueue ON CACHE BOOL "" FORCE)
 
 include("plat/${PLATFORM}/plat.cmake")
 
@@ -63,7 +63,6 @@ include("${CAMKES_VM_LINUX_HELPERS_PATH}")
 # images for the selected platform
 set(VM_IMG_LINUX "${CAMKES_VM_IMAGES_DIR}/${PLATFORM}/linux")
 set(VM_IMG_ROOTFS "${CAMKES_VM_IMAGES_DIR}/${PLATFORM}/rootfs.cpio.gz")
-set(VM_IMG_DTB "${CAMKES_VM_IMAGES_DIR}/${PLATFORM}/linux-dtb")
 
 
 # patch root-fs
@@ -89,43 +88,15 @@ AddFileToOverlayDir(
     overlay
 )
 
-# patch DTB for use proper 'initrd-start' and 'initrd-end'
-UpdateDtbFromInitrd(
-    "${VM_IMG_DTB}"
-    "${VM_IMG_ROOTFS_PATCHED}"
-    "0x4d700000" # initrd start
-    target_dtb_gen
-    VM_IMG_DTB_PATCHED
+# Since this needs the file VM_IMG_ROOTFS_PATCHED anyway, there is an implicit
+# dependency already. Thus, there is no need to explicitly add a dependency on
+# the target 'rootfs_target' here.
+DefineCAmkESVMFileServer(
+    INSTANCE "fileServer"
+    FILES
+        "linux:${VM_IMG_LINUX}"
+        "linux-initrd:${VM_IMG_ROOTFS_PATCHED}"
 )
-
-# ToDo: make these parameters work to allow customization:
-#
-#           DefineCAmkESVMFileServer(
-#               INSTANCE "fileServer"
-#               FILES
-#                   "linux:${VM_IMG_LINUX}"
-#                   "linux-initrd:${VM_IMG_ROOTFS_PATCHED}"
-#                   "linux-dtb:${VM_IMG_DTB_PATCHED}"
-#               DEPENDS
-#                   rootfs_target
-#                   target_dtb_gen
-#           )
-#
-# Until then we need to do it manually
-AddToFileServer("linux" "${VM_IMG_LINUX}")
-AddToFileServer("linux-initrd" "${VM_IMG_ROOTFS_PATCHED}" DEPENDS rootfs_target)
-AddToFileServer("linux-dtb" "${VM_IMG_DTB_PATCHED}" DEPENDS target_dtb_gen)
-get_target_property(FS_FILES vm_fserver_config FILES)
-get_target_property(FS_DEPS   vm_fserver_config DEPS)
-include(cpio)
-MakeCPIO("file_server_archive.o" "${FS_FILES}" DEPENDS "${FS_DEPS}")
-add_library(fileserver_cpio STATIC EXCLUDE_FROM_ALL "file_server_archive.o")
-set_property(TARGET fileserver_cpio PROPERTY LINKER_LANGUAGE C)
-ExtendCAmkESComponentInstance(FileServer fileServer LIBS fileserver_cpio)
-
-
-#-------------------------------------------------------------------------------
-CAmkESAddCPPInclude("${SDK_SEL4_CAMKES_DIR}/libs/sel4_projects_libs/libsel4vm/include/sel4vm")
 
 DeclareCAmkESComponent(
     PingClient
