@@ -1,0 +1,119 @@
+/*
+ * Copyright 2019, Data61, CSIRO (ABN 41 687 119 230)
+ *
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+import <std_connector.camkes>;
+import <global-connectors.camkes>;
+
+import <vm-connectors.camkes>;
+import <seL4VMDTBPassthrough.idl4>;
+import <Batch.idl4>;
+import <PutChar.idl4>;
+import <GetChar.idl4>;
+import <VirtQueues.idl4>;
+import <FileServerInterface.camkes>;
+
+struct vswitch_mapping {
+       string mac_addr;
+       int send_id;
+       int recv_id;
+};
+
+#include <configurations/vm.h>
+component VM {
+    VM_INIT_DEF()
+    attribute vswitch_mapping vswitch_layout[] = [];
+    attribute string vswitch_mac_address = "";
+}
+
+component PingClient {
+    control;
+    /* Virtqueue connection for send and recv */
+    uses VirtQueueDev recv;
+    uses VirtQueueDrv send;
+    emits Callback self;
+    consumes Callback ping_wait;
+}
+
+//Componentes
+import <VirtQueue/VirtQueue.camkes>;
+import <FileServer/FileServer.camkes>;
+
+// Platform specific Configuration
+#include <plat.camkes>
+
+assembly {
+    composition {
+
+	component FileServer fileServer;
+
+        component VM vm0;
+        connection seL4VMDTBPassthrough vm0_dtb(
+            from vm0.dtb_self,
+            to   vm0.dtb
+        );
+        connection seL4GlobalAsynch vm0_notify_ready(
+            from vm0.notification_ready_connector,
+            to   vm0.notification_ready
+        );
+        connection seL4RPCDataport vm0_fs(
+            from vm0.fs,
+            to   fileServer.fs_ctrl
+        );
+
+
+        component PingClient ping_client;
+        component VirtQueueInit ping_vqinit0;
+        component VirtQueueInit ping_vqinit1;
+
+        connection seL4VirtQueues ping_virtq_conn0(
+	    to ping_vqinit0.init,
+	    from ping_client.send,
+	    from vm0.recv
+	);
+        connection seL4VirtQueues ping_virtq_conn1(
+	    to ping_vqinit1.init,
+	    from ping_client.recv,
+	    from vm0.send
+	);
+        connection seL4GlobalAsynchCallback ping_global_callback(
+	    from ping_client.self,
+	    to ping_client.ping_wait
+	);
+    }
+    configuration {
+
+        fileServer.heap_size = 0x200000; // 128 KiB seems enough
+
+        // see also plat.camkes for more config values
+        vm0.num_vcpus               = 1;
+        vm0.base_prio               = 100;
+        vm0._priority               = 101;
+
+        vm0.num_extra_frame_caps    = 0;
+        vm0.extra_frame_map_address = 0;
+        vm0.cnode_size_bits         = 23;
+        vm0.simple_untyped24_pool   = 12;
+        vm0.asid_pool               = true;
+        vm0.global_endpoint_base    = 1 << 27;
+        vm0.simple                  = true;
+        vm0.sem_value               = 0;
+        vm0.heap_size               = 0x300000;
+        vm0.fs_shmem_size           = 0x100000;
+        
+        vm0.recv_id = 0;
+        vm0.recv_shmem_size = 32768;
+        vm0.send_id = 1;
+        vm0.send_shmem_size = 32768;
+        vm0.vswitch_mac_address = "02:00:00:00:AA:01";
+        vm0.vswitch_layout = [{"mac_addr": "02:00:00:00:AA:02", "recv_id": 0, "send_id":1}];
+
+        ping_client.recv_id = 0;
+        ping_client.recv_shmem_size = 32768;
+        ping_client.send_id = 1;
+        ping_client.send_shmem_size = 32768;
+        ping_client.vswitch_mac_address = "02:00:00:00:AA:02";
+    }
+}
