@@ -98,29 +98,15 @@ AddOverlayDirToRootfs(
     GZIP
 )
 
-AddToFileServer("linux-initrd" "${VM_ROOTFS_FILE_PATCHED}" DEPENDS rootfs_target)
-#UpdateDtbFromInitrd(
-#    "${CAMKES_VM_IMAGES_DIR}/qemu-arm-virt/linux-dtb"
-#    "${VM_ROOTFS_FILE}"
-#    "0x4d700000"
-#    target_dtb_gen
-#    DTB_FOR_VM
-#)
-#AddToFileServer("linux-dtb" "${DTB_FOR_VM}" DEPENDS target_dtb_gen)
-
-
-# DefineCAmkESVMFileServer() defines a CAmkESVMFileServer using the declared
-# fileserver images and dependencies. Images are placed into a CPIO archive.
-get_target_property(fileserver_images vm_fserver_config FILES)
-get_target_property(fileserver_deps   vm_fserver_config DEPS)
-# Build CPIO archive given the defined kernel and rootfs images
-include(cpio)
-MakeCPIO(file_server_archive.o "${fileserver_images}" DEPENDS "${fileserver_deps}")
-add_library(fileserver_cpio STATIC EXCLUDE_FROM_ALL file_server_archive.o)
-set_property(
-    TARGET fileserver_cpio
-    PROPERTY
-        LINKER_LANGUAGE C
+DefineCAmkESVMFileServer(
+    INSTANCE "fileServer"
+    FILES
+        "linux:${VM_IMG_LINUX}"
+        "linux-initrd:${VM_IMG_ROOTFS_PATCHED}"
+        "linux-dtb:${VM_IMG_DTB_PATCHED}"
+    DEPENDS
+        rootfs_target 
+        target_dtb_gen
 )
 
 ExtendCAmkESComponentInstance(
