@@ -18,8 +18,8 @@ set(LibUSB OFF CACHE BOOL "" FORCE)
 set(VmInitRdFile ON CACHE BOOL "" FORCE)
 #set(VmVirtioConsole ON CACHE BOOL "" FORCE)
 set(CapDLLoaderMaxObjects 8192 CACHE STRING "" FORCE)
-set(VmVirtioNetVirtqueue ON CACHE BOOL "" FORCE)
 set(VmPCISupport ON CACHE BOOL "" FORCE)
+set(VmVirtioNetVirtqueue ON CACHE BOOL "" FORCE)
 
 include("plat/${PLATFORM}/plat.cmake")
 
@@ -115,7 +115,7 @@ UpdateDtbFromInitrd(
 #)
 AddToFileServer("linux" "${VM_IMG_LINUX}")
 AddToFileServer("linux-initrd" "${VM_IMG_ROOTFS_PATCHED}")
-#AddToFileServer("linux-dtb" "${VM_IMG_DTB_PATCHED}" DEPENDS target_dtb_gen)
+AddToFileServer("linux-dtb" "${VM_IMG_DTB_PATCHED}" DEPENDS target_dtb_gen)
 get_target_property(FS_FILES vm_fserver_config FILES)
 get_target_property(FS_DEPS vm_fserver_config DEPS)
 include(cpio)
