@@ -48,9 +48,7 @@ assembly {
 
     configuration {
 
-        vm0.dtb = dtb([
-            {"path": "/pl011@9000000"},
-        ]);
+        vm0.dtb = dtb([{}]); /* nothing */
 
         vm0.mmios = [
             "0x08040000:0x1000:12", // Interrupt Controller Virtual CPU interface (VM view)
@@ -80,7 +78,7 @@ assembly {
             "initrd_name": "linux-initrd",
 
             "kernel_bootcmdline": "debug ignore_loglevel",
-            "kernel_stdout": "/pl011@9000000",
+            "kernel_stdout": "/pl011@f9000000",
         };
     }
 }

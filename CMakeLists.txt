@@ -23,6 +23,8 @@ set(VmPCISupport ON CACHE BOOL "" FORCE)
 set(VmVirtioConsole OFF CACHE BOOL "" FORCE)
 set(VmVirtioNetVirtqueue ON CACHE BOOL "" FORCE)
 
+set(VmVirtUartPL011 ON CACHE BOOL "" FORCE)
+
 include("plat/${PLATFORM}/plat.cmake")
 
 os_sdk_setup()
