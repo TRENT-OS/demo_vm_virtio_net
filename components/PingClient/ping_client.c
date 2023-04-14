@@ -45,8 +45,8 @@ static unsigned short one_comp_checksum(
     int i = 0;
 
     for (i = 0; i < length - 1; i += 2) {
-        unsigned short *data_word = (unsigned short *)&data[i];
-        sum += *data_word;
+        unsigned short data_word = *((unsigned short *)&data[i]);
+        sum += data_word;
     }
     /* Odd size */
     if (length % 2) {
