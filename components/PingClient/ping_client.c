@@ -49,7 +49,7 @@ static unsigned short one_comp_checksum(
         sum += data_word;
     }
     /* Odd size */
-    if (length % 2) {
+    if (0 != length % 2) {
         unsigned short data_word = (unsigned char)data[i];
         sum += data_word;
     }
