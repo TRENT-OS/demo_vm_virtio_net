@@ -215,9 +215,8 @@ static void handle_recv_data(
     if (ntohs(rcv_req->h_proto) == ETH_P_ARP) {
         create_arp_req_reply(ctx, recv_data, recv_data_size);
     } else if (ntohs(rcv_req->h_proto) == ETH_P_IP) {
-        char ip_packet[ETH_FRAME_LEN];
-        memcpy(ip_packet, &recv_data[sizeof(struct ethhdr)], recv_data_size - sizeof(struct ethhdr));
-        print_ip_packet(ip_packet, recv_data_size - sizeof(struct ethhdr));
+        print_ip_packet(&recv_data[sizeof(struct ethhdr)],
+                        recv_data_size - sizeof(struct ethhdr));
         create_icmp_req_reply(ctx, recv_data, recv_data_size);
     }
 }
