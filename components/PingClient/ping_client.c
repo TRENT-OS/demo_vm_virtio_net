@@ -44,13 +44,13 @@ static unsigned short one_comp_checksum(
     unsigned int sum = 0;
     int i = 0;
 
-    for (i = 0; i < length - 1; i += 2) {
+    for (int i = 0; i < length - 1; i += 2) {
         unsigned short data_word = *((unsigned short *)&data[i]);
         sum += data_word;
     }
     /* Odd size */
     if (0 != length % 2) {
-        unsigned short data_word = (unsigned char)data[i];
+        unsigned short data_word = (unsigned char)data[length - 1];
         sum += data_word;
     }
 
