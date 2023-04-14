@@ -242,7 +242,7 @@ static void handle_send_callback(
     uint32_t wr_len = 0;
     vq_flags_t flag;
     virtqueue_ring_object_t handle;
-    if (!virtqueue_get_used_buf(vq, &handle, (uint32_t *)&wr_len)) {
+    if (!virtqueue_get_used_buf(vq, &handle, &wr_len)) {
         ZF_LOGE("Client virtqueue dequeue failed");
         return;
     }
