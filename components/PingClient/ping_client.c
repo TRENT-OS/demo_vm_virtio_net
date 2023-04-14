@@ -38,13 +38,13 @@ static ctx_t *get_ctx(void)
 
 
 static uint16_t one_comp_checksum(
-    char *data,
+    char const *data,
     size_t length
 ) {
     uint32_t sum = 0;
 
     for (int i = 0; i < length - 1; i += 2) {
-        uint16_t data_word = *((uint16_t *)&data[i]);
+        uint16_t data_word = *((uint16_t const *)&data[i]);
         sum += data_word;
     }
     /* Odd size */
@@ -62,7 +62,7 @@ static uint16_t one_comp_checksum(
 
 static int send_outgoing_packet(
     ctx_t *ctx,
-    char *outgoing_data,
+    char const *outgoing_data,
     size_t outgoing_data_size
 ) {
     int err;
@@ -91,11 +91,11 @@ static int send_outgoing_packet(
 
 
 static void print_ip_packet(
-    char *ip_buf,
+    char const *ip_buf,
     size_t ip_length
 ) {
-    struct iphdr *ip = (struct iphdr *)ip_buf;
-    struct icmphdr *icmp = (struct icmphdr *)&ip_buf[sizeof(struct iphdr)];
+    struct iphdr const *ip = (struct iphdr const *)ip_buf;
+    struct icmphdr const *icmp = (struct icmphdr const *)&ip_buf[sizeof(struct iphdr)];
 
     printf("Packet Contents:");
 
@@ -120,7 +120,7 @@ static void print_ip_packet(
 
 static int create_arp_req_reply(
     ctx_t *ctx,
-    char *recv_data,
+    char const *recv_data,
     size_t recv_data_size
 ) {
     char reply_buffer[ETH_FRAME_LEN];
@@ -128,7 +128,7 @@ static int create_arp_req_reply(
     //---------------------------------
     //| ethhdr | ether_arp            |
     //---------------------------------
-    struct ether_arp *arp_req = (struct ether_arp *)&recv_data[sizeof(struct ethhdr)];
+    struct ether_arp const *arp_req = (struct ether_arp const *)&recv_data[sizeof(struct ethhdr)];
 
     struct ethhdr *send_reply = (struct ethhdr *)reply_buffer;
     struct ether_arp *arp_reply = (struct ether_arp *)&reply_buffer[sizeof(struct ethhdr)];
@@ -170,12 +170,12 @@ static int create_arp_req_reply(
 
 static int create_icmp_req_reply(
     ctx_t *ctx,
-    char *recv_data,
+    char const *recv_data,
     size_t recv_data_size
 ) {
-    struct ethhdr *eth_req = (struct ethhdr *)recv_data;
-    struct iphdr *ip_req = (struct iphdr *)&recv_data[sizeof(struct ethhdr)];
-    struct icmphdr *icmp_req = (struct icmphdr *)&recv_data[sizeof(struct ethhdr) + sizeof(struct iphdr)];
+    struct ethhdr const *eth_req = (struct ethhdr const *)recv_data;
+    struct iphdr const *ip_req = (struct iphdr const *)&recv_data[sizeof(struct ethhdr)];
+    struct icmphdr const *icmp_req = (struct icmphdr const *)&recv_data[sizeof(struct ethhdr) + sizeof(struct iphdr)];
 
     char reply_buffer[ETH_FRAME_LEN];
     struct ethhdr *eth_reply = (struct ethhdr *)reply_buffer;
@@ -209,10 +209,10 @@ static int create_icmp_req_reply(
 
 static void handle_recv_data(
     ctx_t *ctx,
-    char *recv_data,
+    char const *recv_data,
     size_t recv_data_size
 ) {
-    struct ethhdr *rcv_req = (struct ethhdr *)recv_data;
+    struct ethhdr const *rcv_req = (struct ethhdr const *)recv_data;
     /* Actually, we should check the MAC address here to see whether this packet
      * is for us or not. Since our little network only has the VM an us, we just
      * assume anything the VM sends is for us. This example does not even have
@@ -243,7 +243,7 @@ static void handle_recv_callback(
     }
 
     while (camkes_virtqueue_device_gather_buffer(vq, &handle, &buf, (unsigned int *)&buf_size, &flag) >= 0) {
-        handle_recv_data(ctx, (char *)buf, buf_size);
+        handle_recv_data(ctx, (char const *)buf, buf_size);
     }
 
     if (!virtqueue_add_used_buf(vq, &handle, 0)) {
