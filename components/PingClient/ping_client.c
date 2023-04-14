@@ -92,12 +92,11 @@ static int send_outgoing_packet(
 
 
 static void print_ip_packet(
-    void *ip_buf,
+    char *ip_buf,
     size_t ip_length
 ) {
-    struct iphdr *ip = ip_buf;
-    struct icmphdr *icmp = ip_buf + sizeof(struct iphdr);
-    unsigned char *ip_packet = (unsigned char *)ip_buf;
+    struct iphdr *ip = (struct iphdr *)ip_buf;
+    struct icmphdr *icmp = (struct icmphdr *)(ip_buf + sizeof(struct iphdr));
 
     printf("Packet Contents:");
 
@@ -105,7 +104,7 @@ static void print_ip_packet(
         if (i % 15 == 0) {
             printf("\n%d:\t", i);
         }
-        printf("%x ", ip_packet[i]);
+        printf("%x ", ip_buf[i]);
     }
     printf("\n");
 
