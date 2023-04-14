@@ -26,7 +26,7 @@ virtqueue_device_t recv_virtqueue;
 virtqueue_driver_t send_virtqueue;
 
 
-unsigned short one_comp_checksum(
+static unsigned short one_comp_checksum(
     char *data,
     size_t length
 ) {
@@ -49,8 +49,7 @@ unsigned short one_comp_checksum(
     return ~sum;
 }
 
-
-int send_outgoing_packet(
+static int send_outgoing_packet(
     char *outgoing_data,
     size_t outgoing_data_size
 ) {
@@ -73,7 +72,7 @@ int send_outgoing_packet(
 }
 
 
-void print_ip_packet(
+static void print_ip_packet(
     void *ip_buf,
     size_t ip_length
 ) {
@@ -102,7 +101,7 @@ void print_ip_packet(
 }
 
 
-int create_arp_req_reply(
+static int create_arp_req_reply(
     char *recv_data,
     size_t recv_data_size
 ) {
@@ -151,7 +150,7 @@ int create_arp_req_reply(
 }
 
 
-int create_icmp_req_reply(
+static int create_icmp_req_reply(
     char *recv_data,
     size_t recv_data_size
 ) {
@@ -189,7 +188,7 @@ int create_icmp_req_reply(
 }
 
 
-void handle_recv_data(
+static void handle_recv_data(
     char *recv_data,
     size_t recv_data_size
 ) {
@@ -210,7 +209,7 @@ void handle_recv_data(
 }
 
 
-void handle_recv_callback(
+static void handle_recv_callback(
     virtqueue_device_t *vq
 ) {
     void *buf = NULL;
@@ -235,7 +234,7 @@ void handle_recv_callback(
 }
 
 
-void handle_send_callback(
+static void handle_send_callback(
     virtqueue_driver_t *vq
 ) {
     void *buf = NULL;
