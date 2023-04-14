@@ -85,9 +85,6 @@ static void print_ip_packet(
     char const *ip_buf,
     size_t ip_length
 ) {
-    struct iphdr const *ip = (struct iphdr const *)ip_buf;
-    struct icmphdr const *icmp = (struct icmphdr const *)&ip_buf[sizeof(struct iphdr)];
-
     printf("Packet Contents:");
 
     for (int i = 0; i < ip_length; i++) {
@@ -98,6 +95,8 @@ static void print_ip_packet(
     }
     printf("\n");
 
+    struct iphdr const *ip = (struct iphdr const *)ip_buf;
+
     char sz_saddr[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &(ip->saddr), sz_saddr, sizeof(sz_saddr));
     char sz_daddr[INET_ADDRSTRLEN];
@@ -106,8 +105,18 @@ static void print_ip_packet(
     printf("IP Header - Version: IPv%d protocol: %d | src address: %s",
            ip->version, ip->protocol, sz_saddr);
     printf(" | dest address: %s\n", sz_daddr);
-    printf("ICMP Header - Type: %d | id: %d | seq: %d\n",
-           icmp->type, icmp->un.echo.id, icmp->un.echo.sequence);
+
+    switch (ip->protocol) {
+        case IPPROTO_ICMP: {
+            struct icmphdr const *icmp = (struct icmphdr const *)&ip_buf[sizeof(struct iphdr)];
+            printf("ICMP Header - Type: %d | id: %d | seq: %d\n",
+                   icmp->type, icmp->un.echo.id, icmp->un.echo.sequence);
+            break;
+        }
+        default:
+            /* content dumping not supported for IPPROTO_TCP, IPPROTO_UDP ... */
+            break;
+    }
     printf("\n");
 }
 
