@@ -66,17 +66,21 @@ static int send_outgoing_packet(
     char *outgoing_data,
     size_t outgoing_data_size
 ) {
+    int err;
     virtqueue_driver_t *vq = &(ctx->send_virtqueue);
 
     void *buf = NULL;
-    int err = camkes_virtqueue_buffer_alloc(vq, &buf, outgoing_data_size);
+    err = camkes_virtqueue_buffer_alloc(vq, &buf, outgoing_data_size);
     if (err) {
+        ZF_LOGE("Failed to allocate queue buffer (%d)", err);
         return -1;
     }
 
     memcpy(buf, outgoing_data, outgoing_data_size);
 
-    if (camkes_virtqueue_driver_send_buffer(vq, buf, outgoing_data_size) != 0) {
+    err = camkes_virtqueue_driver_send_buffer(vq, buf, outgoing_data_size);
+    if (err) {
+        ZF_LOGE("Failed to send queue buffer (%d)", err);
         camkes_virtqueue_buffer_free(vq, buf);
         return -1;
     }
