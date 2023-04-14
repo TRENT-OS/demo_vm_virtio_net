@@ -298,7 +298,7 @@ void post_init(void)
 {
     ctx_t *ctx = get_ctx();
 
-    ZF_LOGE("Starting ping echo component");
+    ZF_LOGI("Starting ping echo component");
 
     /* Initialise recv virtqueue */
     int err = camkes_virtqueue_device_init(&(ctx->recv_virtqueue), 0);
