@@ -25,9 +25,6 @@
 virtqueue_device_t recv_virtqueue;
 virtqueue_driver_t send_virtqueue;
 
-void handle_recv_callback(virtqueue_device_t *vq);
-void handle_send_callback(virtqueue_driver_t *vq);
-
 
 unsigned short one_comp_checksum(
     char *data,
