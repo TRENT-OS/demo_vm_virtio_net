@@ -37,27 +37,26 @@ static ctx_t *get_ctx(void)
 }
 
 
-static unsigned short one_comp_checksum(
+static uint16_t one_comp_checksum(
     char *data,
     size_t length
 ) {
-    unsigned int sum = 0;
-    int i = 0;
+    uint32_t sum = 0;
 
     for (int i = 0; i < length - 1; i += 2) {
-        unsigned short data_word = *((unsigned short *)&data[i]);
+        uint16_t data_word = *((uint16_t *)&data[i]);
         sum += data_word;
     }
     /* Odd size */
     if (0 != length % 2) {
-        unsigned short data_word = (unsigned char)data[length - 1];
+        uint16_t data_word = (uint16_t)data[length - 1];
         sum += data_word;
     }
 
     sum = (sum >> 16) + (sum & 0xFFFF);
     sum += (sum >> 16);
 
-    return ~sum;
+    return (uint16_t)(~sum);
 }
 
 
