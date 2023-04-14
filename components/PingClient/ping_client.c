@@ -23,6 +23,7 @@
 #define IPV4_LENGTH 4
 
 typedef struct {
+    bool init_ok;
     virtqueue_device_t recv_virtqueue;
     virtqueue_driver_t send_virtqueue;
 } ctx_t;
@@ -278,10 +279,14 @@ void ping_wait_callback(void)
     /* ToDo: Does the callback have a context or can we get the origin? */
     ctx_t *ctx = get_ctx();
 
+    if (!ctx->init_ok) {
+        ZF_LOGE("Callback disabled due to startup failure");
+        return;
+    }
+
     if (VQ_DEV_POLL(&(ctx->recv_virtqueue))) {
         handle_recv_callback(ctx);
     }
-
 
     if (VQ_DRV_POLL(&(ctx->send_virtqueue))) {
         handle_send_callback(ctx);
@@ -289,7 +294,7 @@ void ping_wait_callback(void)
 }
 
 
-int run(void)
+void post_init(void)
 {
     ctx_t *ctx = get_ctx();
 
@@ -299,15 +304,15 @@ int run(void)
     int err = camkes_virtqueue_device_init(&(ctx->recv_virtqueue), 0);
     if (err) {
         ZF_LOGE("Unable to initialise recv virtqueue");
-        return 1;
+        return;
     }
 
     /* Initialise send virtqueue */
     err = camkes_virtqueue_driver_init(&(ctx->send_virtqueue), 1);
     if (err) {
         ZF_LOGE("Unable to initialise send virtqueue");
-        return 1;
+        return;
     }
 
-    return 0;
+    ctx->init_ok = true;
 }

@@ -29,7 +29,6 @@ component VM {
 }
 
 component PingClient {
-    control;
     /* Virtqueue connection for send and recv */
     uses VirtQueueDev recv;
     uses VirtQueueDrv send;
@@ -104,7 +103,7 @@ assembly {
         vm0.sem_value               = 0;
         vm0.heap_size               = 0x300000;
         vm0.fs_shmem_size           = 0x100000;
-        
+
         vm0.recv_id = 0;
         vm0.recv_shmem_size = 32768;
         vm0.send_id = 1;
