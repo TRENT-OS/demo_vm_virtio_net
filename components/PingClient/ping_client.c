@@ -107,6 +107,14 @@ int create_arp_req_reply(char *recv_data, size_t recv_data_size)
     /* MAC Address */
     memcpy(arp_reply->arp_tha, arp_req->arp_sha, ETH_ALEN);
     memcpy(arp_reply->arp_sha, arp_req->arp_sha, ETH_ALEN);
+    /* This is an ARP request from the VM in preparation for the ping. The VM
+     * just has our IP address, but it needs the MAC address also. There is no
+     * MAC configured in this simple example, we simply pretend our MAC is the
+     * sender's MAC "+ 2". This is fine, as we and the VM are the only devices
+     * in our little virtual network.  We don't even have to remember this MAC,
+     * because the VM will use this MAC in the dest field of the ping packet, so
+     * we can simply copy dest to src in the response.
+     */
     arp_reply->arp_sha[5] = arp_reply->arp_sha[5] + 2;
 
     memcpy(send_reply->h_source, arp_reply->arp_sha, ETH_ALEN);
@@ -166,6 +174,11 @@ int create_icmp_req_reply(char *recv_data, size_t recv_data_size)
 void handle_recv_data(char *recv_data, size_t recv_data_size)
 {
     struct ethhdr *rcv_req = (struct ethhdr *) recv_data;
+    /* Actually, we should check the MAC address here to see whether this packet
+     * is for us or not. Since our little network only has the VM an us, we just
+     * assume anything the VM sends is for us. This example does not even have
+     * a dedicated MAC address configured, it makes up one on demand.
+     */
     if (ntohs(rcv_req->h_proto) == ETH_P_ARP) {
         create_arp_req_reply(recv_data, recv_data_size);
     } else if (ntohs(rcv_req->h_proto) == ETH_P_IP) {
