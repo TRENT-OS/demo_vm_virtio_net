@@ -112,7 +112,7 @@ static void print_ip_packet(
 }
 
 
-static int create_arp_req_reply(
+static void handle_packet_eth_arp(
     ctx_t *ctx,
     char const *recv_data,
     size_t recv_data_size
@@ -158,15 +158,22 @@ static int create_arp_req_reply(
     arp_reply->ea_hdr.ar_hln = ETH_ALEN;
     arp_reply->ea_hdr.ar_pln = IPV4_LENGTH;
 
-    return send_outgoing_packet(ctx, reply_buffer, sizeof(struct ethhdr) + sizeof(struct ether_arp));
+    int err = send_outgoing_packet(ctx, reply_buffer,
+                                   sizeof(struct ethhdr) + sizeof(struct ether_arp));
+    if (err) {
+        ZF_LOGE("failed to send ARP reply (%d)", err);
+    }
 }
 
 
-static int create_icmp_req_reply(
+static void handle_packet_eth_ip(
     ctx_t *ctx,
     char const *recv_data,
     size_t recv_data_size
 ) {
+    print_ip_packet(&recv_data[sizeof(struct ethhdr)],
+                    recv_data_size - sizeof(struct ethhdr));
+
     struct ethhdr const *eth_req = (struct ethhdr const *)recv_data;
     struct iphdr const *ip_req = (struct iphdr const *)&recv_data[sizeof(struct ethhdr)];
     struct icmphdr const *icmp_req = (struct icmphdr const *)&recv_data[sizeof(struct ethhdr) + sizeof(struct iphdr)];
@@ -196,8 +203,11 @@ static int create_icmp_req_reply(
     ip_reply->check = 0;
     ip_reply->check = one_comp_checksum((char *)ip_reply, sizeof(struct iphdr));
 
-    return send_outgoing_packet(ctx, reply_buffer,
-                                sizeof(struct ethhdr) + sizeof(struct iphdr) + sizeof(struct icmphdr) + ICMP_MSG_SIZE);
+    int err = send_outgoing_packet(ctx, reply_buffer,
+                                   sizeof(struct ethhdr) + sizeof(struct iphdr) + sizeof(struct icmphdr) + ICMP_MSG_SIZE);
+    if (err) {
+        ZF_LOGE("failed to send ICMP reply (%d)", err);
+    }
 }
 
 
@@ -206,18 +216,38 @@ static void handle_recv_data(
     char const *recv_data,
     size_t recv_data_size
 ) {
-    struct ethhdr const *rcv_req = (struct ethhdr const *)recv_data;
+    /* We are expecting the packets to be ethernet frames, so there must be a
+     * ethernet header.
+     */
+    if (recv_data_size < sizeof(struct ethhdr)) {
+        ZF_LOGE("Ignore invalid ethernet packet with length %zu", recv_data_size);
+        return;
+    }
     /* Actually, we should check the MAC address here to see whether this packet
      * is for us or not. Since our little network only has the VM an us, we just
      * assume anything the VM sends is for us. This example does not even have
      * a dedicated MAC address configured, it makes up one on demand.
      */
-    if (ntohs(rcv_req->h_proto) == ETH_P_ARP) {
-        create_arp_req_reply(ctx, recv_data, recv_data_size);
-    } else if (ntohs(rcv_req->h_proto) == ETH_P_IP) {
-        print_ip_packet(&recv_data[sizeof(struct ethhdr)],
-                        recv_data_size - sizeof(struct ethhdr));
-        create_icmp_req_reply(ctx, recv_data, recv_data_size);
+
+    struct ethhdr const *rcv_req = (struct ethhdr const *)recv_data;
+    uint16_t protocol = ntohs(rcv_req->h_proto);
+    switch (protocol) {
+        case ETH_P_ARP:
+            handle_packet_eth_arp(ctx, recv_data, recv_data_size);
+            break;
+        case ETH_P_IP:
+            handle_packet_eth_ip(ctx, recv_data, recv_data_size);
+            break;
+        case ETH_P_IPV6:
+            /* Seems the VM also sends IPv6 packets in parallel to IPv4. We
+             * don't support IPv6, so we ignore this.
+             */
+            ZF_LOGI("ignore IPv6 packet");
+            break;
+        default:
+            /* Ignore any other protocols. */
+            ZF_LOGI("ignore packet with ethernet protocol 0x%x", protocol);
+            break;
     }
 }
 
