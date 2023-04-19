@@ -19,7 +19,7 @@
 #include <netinet/ip_icmp.h>
 #include <arpa/inet.h>
 
-#define ICMP_MSG_SIZE 64 - sizeof(struct icmphdr)
+#define ICMP_MSG_SIZE (64 - sizeof(struct icmphdr))
 #define IPV4_LENGTH 4
 
 virtqueue_device_t recv_virtqueue;
