@@ -69,19 +69,21 @@ assembly {
         component VirtQueueInit ping_vqinit1;
 
         connection seL4VirtQueues ping_virtq_conn0(
-	    to ping_vqinit0.init,
-	    from ping_client.send,
-	    from vm0.recv
-	);
+            to ping_vqinit0.init,
+            from ping_client.send,
+            from vm0.recv
+        );
+
         connection seL4VirtQueues ping_virtq_conn1(
-	    to ping_vqinit1.init,
-	    from ping_client.recv,
-	    from vm0.send
-	);
+            to ping_vqinit1.init,
+            from ping_client.recv,
+            from vm0.send
+        );
+
         connection seL4GlobalAsynchCallback ping_global_callback(
-	    from ping_client.self,
-	    to ping_client.ping_wait
-	);
+            from ping_client.self,
+            to ping_client.ping_wait
+        );
     }
     configuration {
 
