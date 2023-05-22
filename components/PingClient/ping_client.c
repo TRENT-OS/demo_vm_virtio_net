@@ -233,25 +233,55 @@ static void handle_recv_callback(
     ctx_t *ctx
 ) {
     virtqueue_device_t *vq = &(ctx->recv_virtqueue);
-    void *buf = NULL;
-    size_t buf_size = 0;
-    vq_flags_t flag;
-    virtqueue_ring_object_t handle;
-    if (!virtqueue_get_available_buf(vq, &handle)) {
-        ZF_LOGE("Client virtqueue dequeue failed");
-        return;
+
+    /* One or more packets are available from the queue. */
+    for(;;) {
+        int err;
+        virtqueue_ring_object_t handle = {0};
+        if (!virtqueue_get_available_buf(vq, &handle)) {
+            return; /* no more data */
+        }
+
+        /* We support normal ethernet packets only, where the max size is well
+         * defined. Thus a fixed buffer allocated from the stack is used to get
+         * each packet from the queue. Allocating the buffer from the stack is
+         * fine for this example. Give the relatively small size it might also
+         * be ok in general, and this makes this function thread safe. However,
+         * static or dynamic allocation from the heap should be considered, to
+         * reduce stack usage.
+         */
+        char buf[ETH_FRAME_LEN];
+        size_t len = virtqueue_scattered_available_size(vq, &handle);
+        if (len > sizeof(buf)) {
+            ZF_LOGW("Dropping frame, size (%zu) exceeds max (%zu)", len, sizeof(buf));
+            /* Return the (chained) buffer(s). We use 0 for the payload length,
+             * because there is no data in there. Technically, the ethernet
+             * frame is still in there, but that is not relevant any longer.
+             */
+            if (!virtqueue_add_used_buf(vq, &handle, 0)) {
+                /* This is not supposed to happen, and there is nothing we can
+                 * do here.
+                 */
+                ZF_LOGW("Could not release queue buffer");
+            }
+            continue;
+        }
+
+        /* Copy the frame from the chained buffers in the queue to our
+         * contiguous buffer.
+         */
+        err = camkes_virtqueue_device_gather_copy_buffer(vq, &handle, buf, len);
+        if (err) {
+            ZF_LOGW("Dropping frame, can't gather queue buffers");
+            continue;
+        }
+
+        handle_recv_data(ctx, buf, len);
+
+        vq->notify();
     }
 
-    while (camkes_virtqueue_device_gather_buffer(vq, &handle, &buf, (unsigned int *)&buf_size, &flag) >= 0) {
-        handle_recv_data(ctx, (char const *)buf, buf_size);
-    }
-
-    if (!virtqueue_add_used_buf(vq, &handle, 0)) {
-        ZF_LOGE("Unable to enqueue used recv buffer");
-        return;
-    }
-
-    vq->notify();
+    UNREACHABLE();
 }
 
 
@@ -259,20 +289,36 @@ static void handle_send_callback(
     ctx_t *ctx
 ) {
     virtqueue_driver_t *vq = &(ctx->send_virtqueue);
-    void *buf = NULL;
-    unsigned int buf_size = 0;
-    uint32_t wr_len = 0;
-    vq_flags_t flag;
-    virtqueue_ring_object_t handle;
-    if (!virtqueue_get_used_buf(vq, &handle, &wr_len)) {
-        ZF_LOGE("Client virtqueue dequeue failed");
-        return;
+
+    /* Memory for one or more packets in the queue can be released. */
+    for(;;) {
+        virtqueue_ring_object_t handle = {0};
+        uint32_t wr_len = 0;
+        if (!virtqueue_get_used_buf(vq, &handle, &wr_len)) {
+            /* No more packets left to clean up. */
+            return;
+        }
+
+        for(;;) {
+            void *buf = NULL;
+            unsigned int buf_size = 0;
+            vq_flags_t flag = 0;
+            int err = camkes_virtqueue_driver_gather_buffer(vq, &handle, &buf,
+                                                            &buf_size, &flag);
+            if (err) {
+                if (-1 != err) {
+                    ZF_LOGE("Unexpected failure getting driver queue buffer (%d)",
+                            err);
+                }
+                break;
+            }
+
+            /* Clean up and free the buffer we allocated */
+            camkes_virtqueue_buffer_free(vq, buf);
+        }
     }
 
-    while (camkes_virtqueue_driver_gather_buffer(vq, &handle, &buf, (unsigned int *)&buf_size, &flag) >= 0) {
-        /* Clean up and free the buffer we allocated */
-        camkes_virtqueue_buffer_free(vq, buf);
-    }
+    UNREACHABLE();
 }
 
 
