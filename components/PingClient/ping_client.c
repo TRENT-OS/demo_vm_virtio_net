@@ -19,6 +19,8 @@
 #include <netinet/ip_icmp.h>
 #include <arpa/inet.h>
 
+#define PTR_OFFS(p, o)  ((typeof(p))(((uintptr_t)(p)) + (o)))
+
 #define ICMP_MSG_SIZE (64 - sizeof(struct icmphdr))
 #define IPV4_LENGTH 4
 
@@ -123,7 +125,7 @@ static void print_ip_packet(
 
 static void handle_packet_eth_arp(
     ctx_t *ctx,
-    char const *recv_data,
+    void const *recv_data,
     size_t recv_data_size
 ) {
     char reply_buffer[ETH_FRAME_LEN];
@@ -131,7 +133,7 @@ static void handle_packet_eth_arp(
     //---------------------------------
     //| ethhdr | ether_arp            |
     //---------------------------------
-    struct ether_arp const *arp_req = (struct ether_arp const *)&recv_data[sizeof(struct ethhdr)];
+    struct ether_arp const *arp_req = PTR_OFFS(recv_data, sizeof(struct ethhdr));
 
     struct ethhdr *send_reply = (struct ethhdr *)reply_buffer;
     struct ether_arp *arp_reply = (struct ether_arp *)&reply_buffer[sizeof(struct ethhdr)];
@@ -177,14 +179,14 @@ static void handle_packet_eth_arp(
 
 static void handle_packet_eth_ip(
     ctx_t *ctx,
-    char const *recv_data,
+    void const *recv_data,
     size_t recv_data_size
 ) {
-    print_ip_packet(&recv_data[sizeof(struct ethhdr)],
+    print_ip_packet(PTR_OFFS(recv_data, sizeof(struct ethhdr)),
                     recv_data_size - sizeof(struct ethhdr));
 
-    struct ethhdr const *eth_req = (struct ethhdr const *)recv_data;
-    struct iphdr const *ip_req = (struct iphdr const *)&recv_data[sizeof(struct ethhdr)];
+    struct ethhdr const *eth_req = recv_data;
+    struct iphdr const *ip_req = PTR_OFFS(recv_data, sizeof(struct ethhdr));
 
     if (4 != ip_req->version) { /* don't need a endian conversion for uint8 */
         /* ignore packets with unsupported IP version */
@@ -200,7 +202,7 @@ static void handle_packet_eth_ip(
             return;
     }
 
-    struct icmphdr const *icmp_req = (struct icmphdr const *)&recv_data[sizeof(struct ethhdr) + sizeof(struct iphdr)];
+    struct icmphdr const *icmp_req = PTR_OFFS(recv_data, sizeof(struct ethhdr) + sizeof(struct iphdr));
 
     char reply_buffer[ETH_FRAME_LEN];
     struct ethhdr *eth_reply = (struct ethhdr *)reply_buffer;
@@ -237,7 +239,7 @@ static void handle_packet_eth_ip(
 
 static void handle_recv_data(
     ctx_t *ctx,
-    char const *recv_data,
+    void const *recv_data,
     size_t recv_data_size
 ) {
     /* We are expecting the packets to be ethernet frames, so there must be a
@@ -253,7 +255,7 @@ static void handle_recv_data(
      * a dedicated MAC address configured, it makes up one on demand.
      */
 
-    struct ethhdr const *rcv_req = (struct ethhdr const *)recv_data;
+    struct ethhdr const *rcv_req = recv_data;
     uint16_t protocol = ntohs(rcv_req->h_proto);
     switch (protocol) {
         case ETH_P_ARP:
