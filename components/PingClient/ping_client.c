@@ -131,21 +131,75 @@ static int send_outgoing_packet(
 }
 
 
-static void print_ip_packet(
-    buffer_t ip_packet
+static void print_packet(
+    buffer_t packet,
+    char const *info_str
 ) {
-    printf("Packet Contents:");
+    printf("Packet Contents for %s:\n", info_str);
 
-    for (int i = 0; i < ip_packet.len; i++) {
-        if (i % 15 == 0) {
-            printf("\n%d:\t", i);
+    char ascii[17] = {0}; /* 16 chars + terminating null */
+    for (int i = 0; i < packet.len; i++) {
+        int rel_idx = i % 16;
+        if (rel_idx == 0) {
+            if (i > 0) {
+                printf("| %s\n", ascii);
+                memset(ascii, 0, sizeof(ascii));
+            }
+            printf("    0x%03x |", i);
         }
-        printf("%x ", ((uint8_t const *)ip_packet.buf)[i]);
+        uint8_t b = ((uint8_t const *)packet.buf)[i];
+        printf("%s%02x ", (i % 4 == 0) ? " " : "", b);
+        ascii[rel_idx] = ((b >= 32) && (b < 127)) ? b : '.';
     }
-    printf("\n");
+    int rem = packet->len % 16;
+    if (rem > 0)
+    {
+        for (int i = rem; i < 16; i++) {
+            printf("%s   ", (i % 4 == 0) ? " " : "");
+        }
+        printf("| %s\n", ascii);
+    }
 
     if (!is_buffer_at_least(ip_packet, sizeof(struct iphdr))) {
-        ZF_LOGE("packet too short to be IP");
+        printf("    invalid ethernet packet with length %zu", packet->len);
+        return;
+    }
+
+    struct ethhdr const *eth_req = packet->buf;
+    printf("    Ethernet: src: ");
+    for (int i = 0; i < sizeof(eth_req->h_source); i++) {
+        printf("%s%02x", (i > 0) ? ":" : "", eth_req->h_source[i]);
+    }
+    printf(", dst: ");
+    for (int i = 0; i < sizeof(eth_req->h_source); i++) {
+        printf("%s%02x", (i > 0) ? ":" : "", eth_req->h_dest[i]);
+    }
+
+    uint16_t protocol = ntohs(eth_req->h_proto);
+    printf(", protocol: 0x%x\n", protocol);
+    switch (protocol) {
+        case ETH_P_ARP:
+            printf("    no decoder available, ARP paylaod starts at offset 0x%zx\n",
+                   sizeof(struct ethhdr));
+            return;
+        case ETH_P_IPV6:
+            printf("    no decoder available, IPv6 paylaod starts at offset 0x%zx\n",
+                   sizeof(struct ethhdr));
+            return;
+        case ETH_P_IP:
+            /* continue below */
+            break;
+        default:
+            printf("    no decoder available, paylaod starts at offset 0x%zx\n",
+                   sizeof(struct ethhdr));
+            return;
+    }
+
+    buffer_t ip_packet = get_sub_buffer_with_min_len(packet,
+                                                     sizeof(struct ethhdr),
+                                                     sizeof(struct iphdr));
+    if (!ip_packet.buf) {
+        ZF_LOGE("   packet too short to be IP");
         return;
     }
     struct iphdr const *ip = ip_packet.buf;
@@ -154,30 +208,36 @@ static void print_ip_packet(
     inet_ntop(AF_INET, &(ip->saddr), sz_saddr, sizeof(sz_saddr));
     char sz_daddr[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &(ip->daddr), sz_daddr, sizeof(sz_daddr));
-
-    printf("IP Header - Version: IPv%d protocol: %d | src address: %s",
-           ip->version, ip->protocol, sz_saddr);
-    printf(" | dest address: %s\n", sz_daddr);
+    printf("    IP: IPv%d, protocol: %d, src: %s, dst: %s\n",
+           ip->version, ip->protocol, sz_saddr, sz_daddr);
 
     switch (ip->protocol) {
         case IPPROTO_ICMP: {
-            buffer_t icmp_packet = get_sub_buffer_with_min_len(ip_packet,
+            buffer_t icmp_packet = get_sub_buffer_with_min_len(&ip_packet,
                                                                sizeof(struct iphdr),
                                                                sizeof(struct icmphdr));
             if (is_null_buffer(icmp_packet)) {
-                ZF_LOGE("packet too short to be ICMP");
+                ZF_LOGE("   packet too short to be ICMP");
                 break;
             }
             struct icmphdr const *icmp = icmp_packet.buf;
-            printf("ICMP Header - Type: %d | id: %d | seq: %d\n",
+            printf("    ICMP: Type: %d, id: %d, seq: %d\n",
                    icmp->type, icmp->un.echo.id, icmp->un.echo.sequence);
-            break;
+            return;
         }
+        case IPPROTO_TCP:
+            printf("    no TCP decoder available\n");
+            return;
+        case IPPROTO_UDP:
+            printf("    no UDP decoder available\n");
+            return;
         default:
             /* content dumping not supported for IPPROTO_TCP, IPPROTO_UDP ... */
-            break;
+            printf("    no content decoder available\n");
+            return;
     }
-    printf("\n");
+
+    UNREACHABLE();
 }
 
 
@@ -244,6 +304,7 @@ static void handle_packet_eth_arp(
     arp_reply->ea_hdr.ar_hln = ETH_ALEN;
     arp_reply->ea_hdr.ar_pln = IPV4_LENGTH;
 
+    print_packet(&packet_out, "ARP reply");
     int err = send_outgoing_packet(ctx, packet_out);
     if (err) {
         ZF_LOGE("failed to send ARP reply (%d)", err);
@@ -271,8 +332,6 @@ static void handle_packet_eth_ip(
         return;
     }
     struct iphdr const *ip_req = ip_packet.buf;
-
-    print_ip_packet(ip_packet);
 
     if (4 != ip_req->version) { /* don't need a endian conversion for uint8 */
         ZF_LOGI("Ignore packet with unsupported IP version (IPv%u, protocol %u)",
@@ -348,6 +407,8 @@ static void handle_packet_eth_ip(
     ip_reply->check = 0;
     ip_reply->check = one_comp_checksum((char *)ip_reply, sizeof(struct iphdr));
 
+
+    print_packet(&packet_out, "ICMP reply");
     int err = send_outgoing_packet(ctx, packet_out);
     if (err) {
         ZF_LOGE("failed to send ICMP reply (%d)", err);
@@ -362,8 +423,9 @@ static void handle_recv_data(
     /* We are expecting the packets to be ethernet frames, so there must be a
      * ethernet header.
      */
+    print_packet(packet, "received packet");
     if (!is_buffer_at_least(packet, sizeof(struct ethhdr))) {
-        ZF_LOGE("Ignore invalid ethernet packet with length %zu", packet.len);
+        ZF_LOGE("Ignore invalid ethernet packet with length %zu", packet->len);
         return;
     }
     /* Actually, we should check the MAC address here to see whether this packet
