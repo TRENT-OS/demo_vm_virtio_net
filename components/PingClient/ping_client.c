@@ -28,8 +28,11 @@ virtqueue_driver_t send_virtqueue;
 void handle_recv_callback(virtqueue_device_t *vq);
 void handle_send_callback(virtqueue_driver_t *vq);
 
-unsigned short one_comp_checksum(char *data, size_t length)
-{
+
+unsigned short one_comp_checksum(
+    char *data,
+    size_t length
+) {
     unsigned int sum = 0;
     int i = 0;
 
@@ -45,32 +48,44 @@ unsigned short one_comp_checksum(char *data, size_t length)
 
     sum = (sum >> 16) + (sum & 0xFFFF);
     sum += (sum >> 16);
+
     return ~sum;
 }
 
-int send_outgoing_packet(char *outgoing_data, size_t outgoing_data_size)
-{
+
+int send_outgoing_packet(
+    char *outgoing_data,
+    size_t outgoing_data_size
+) {
     void *buf = NULL;
     int err = camkes_virtqueue_buffer_alloc(&send_virtqueue, &buf, outgoing_data_size);
     if (err) {
         return -1;
     }
+
     memcpy(buf, outgoing_data, outgoing_data_size);
+
     if (camkes_virtqueue_driver_send_buffer(&send_virtqueue, buf, outgoing_data_size) != 0) {
         camkes_virtqueue_buffer_free(&send_virtqueue, buf);
         return -1;
     }
+
     send_virtqueue.notify();
+
     return 0;
 }
 
-void print_ip_packet(void *ip_buf, size_t ip_length)
-{
+
+void print_ip_packet(
+    void *ip_buf,
+    size_t ip_length
+) {
     struct iphdr *ip = ip_buf;
     struct icmphdr *icmp = ip_buf + sizeof(struct iphdr);
-
     unsigned char *ip_packet = (unsigned char *)ip_buf;
+
     printf("Packet Contents:");
+
     for (int i = 0; i < ip_length; i++) {
         if (i % 15 == 0) {
             printf("\n%d:\t", i);
@@ -89,8 +104,11 @@ void print_ip_packet(void *ip_buf, size_t ip_length)
     printf("\n");
 }
 
-int create_arp_req_reply(char *recv_data, size_t recv_data_size)
-{
+
+int create_arp_req_reply(
+    char *recv_data,
+    size_t recv_data_size
+) {
     char reply_buffer[ETHERMTU];
 
     //---------------------------------
@@ -98,7 +116,7 @@ int create_arp_req_reply(char *recv_data, size_t recv_data_size)
     //---------------------------------
     struct ether_arp *arp_req = (struct ether_arp *)(recv_data + sizeof(struct ethhdr));
 
-    struct ethhdr *send_reply = (struct ethhdr *) reply_buffer;
+    struct ethhdr *send_reply = (struct ethhdr *)reply_buffer;
     struct ether_arp *arp_reply = (struct ether_arp *)(reply_buffer + sizeof(struct ethhdr));
 
     memcpy(send_reply->h_dest, arp_req->arp_sha, ETH_ALEN);
@@ -135,15 +153,17 @@ int create_arp_req_reply(char *recv_data, size_t recv_data_size)
     return send_outgoing_packet(reply_buffer, sizeof(struct ethhdr) + sizeof(struct ether_arp));
 }
 
-int create_icmp_req_reply(char *recv_data, size_t recv_data_size)
-{
 
-    struct ethhdr *eth_req = (struct ethhdr *) recv_data;
+int create_icmp_req_reply(
+    char *recv_data,
+    size_t recv_data_size
+) {
+    struct ethhdr *eth_req = (struct ethhdr *)recv_data;
     struct iphdr *ip_req = (struct iphdr *)(recv_data + sizeof(struct ethhdr));
     struct icmphdr *icmp_req = (struct icmphdr *)(recv_data + sizeof(struct ethhdr) + sizeof(struct iphdr));
 
     char reply_buffer[ETHERMTU];
-    struct ethhdr *eth_reply = (struct ethhdr *) reply_buffer;
+    struct ethhdr *eth_reply = (struct ethhdr *)reply_buffer;
     struct iphdr *ip_reply = (struct iphdr *)(reply_buffer + sizeof(struct ethhdr));
     struct icmphdr *icmp_reply = (struct icmphdr *)(reply_buffer + sizeof(struct ethhdr) + sizeof(struct iphdr));
     char *icmp_msg = (char *)(icmp_reply + 1);
@@ -171,9 +191,12 @@ int create_icmp_req_reply(char *recv_data, size_t recv_data_size)
                                 sizeof(struct ethhdr) + sizeof(struct iphdr) + sizeof(struct icmphdr) + ICMP_MSG_SIZE);
 }
 
-void handle_recv_data(char *recv_data, size_t recv_data_size)
-{
-    struct ethhdr *rcv_req = (struct ethhdr *) recv_data;
+
+void handle_recv_data(
+    char *recv_data,
+    size_t recv_data_size
+) {
+    struct ethhdr *rcv_req = (struct ethhdr *)recv_data;
     /* Actually, we should check the MAC address here to see whether this packet
      * is for us or not. Since our little network only has the VM an us, we just
      * assume anything the VM sends is for us. This example does not even have
@@ -187,11 +210,12 @@ void handle_recv_data(char *recv_data, size_t recv_data_size)
         print_ip_packet(ip_packet, recv_data_size - sizeof(struct ethhdr));
         create_icmp_req_reply(recv_data, recv_data_size);;
     }
-
 }
 
-void handle_recv_callback(virtqueue_device_t *vq)
-{
+
+void handle_recv_callback(
+    virtqueue_device_t *vq
+) {
     void *buf = NULL;
     size_t buf_size = 0;
     vq_flags_t flag;
@@ -201,8 +225,8 @@ void handle_recv_callback(virtqueue_device_t *vq)
         return;
     }
 
-    while (camkes_virtqueue_device_gather_buffer(vq, &handle, &buf,(unsigned int *) &buf_size, &flag) >= 0) {
-        handle_recv_data((char *) buf, buf_size);
+    while (camkes_virtqueue_device_gather_buffer(vq, &handle, &buf, (unsigned int *)&buf_size, &flag) >= 0) {
+        handle_recv_data((char *)buf, buf_size);
     }
 
     if (!virtqueue_add_used_buf(&recv_virtqueue, &handle, 0)) {
@@ -213,19 +237,21 @@ void handle_recv_callback(virtqueue_device_t *vq)
     recv_virtqueue.notify();
 }
 
-void handle_send_callback(virtqueue_driver_t *vq)
-{
+
+void handle_send_callback(
+    virtqueue_driver_t *vq
+) {
     void *buf = NULL;
     unsigned int buf_size = 0;
     uint32_t wr_len = 0;
     vq_flags_t flag;
     virtqueue_ring_object_t handle;
-    if (!virtqueue_get_used_buf(vq, &handle,(uint32_t *) &wr_len)) {
+    if (!virtqueue_get_used_buf(vq, &handle, (uint32_t *)&wr_len)) {
         ZF_LOGE("Client virtqueue dequeue failed");
         return;
     }
 
-    while (camkes_virtqueue_driver_gather_buffer(vq, &handle, &buf,(unsigned int *) &buf_size, &flag) >= 0) {
+    while (camkes_virtqueue_driver_gather_buffer(vq, &handle, &buf, (unsigned int *)&buf_size, &flag) >= 0) {
         /* Clean up and free the buffer we allocated */
         camkes_virtqueue_buffer_free(vq, buf);
     }
@@ -242,6 +268,7 @@ void ping_wait_callback(void)
         handle_send_callback(&send_virtqueue);
     }
 }
+
 
 int run(void)
 {
