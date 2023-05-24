@@ -105,7 +105,7 @@ static int create_arp_req_reply(
     char *recv_data,
     size_t recv_data_size
 ) {
-    char reply_buffer[ETHERMTU];
+    char reply_buffer[ETH_FRAME_LEN];
 
     //---------------------------------
     //| ethhdr | ether_arp            |
@@ -158,7 +158,7 @@ static int create_icmp_req_reply(
     struct iphdr *ip_req = (struct iphdr *)(recv_data + sizeof(struct ethhdr));
     struct icmphdr *icmp_req = (struct icmphdr *)(recv_data + sizeof(struct ethhdr) + sizeof(struct iphdr));
 
-    char reply_buffer[ETHERMTU];
+    char reply_buffer[ETH_FRAME_LEN];
     struct ethhdr *eth_reply = (struct ethhdr *)reply_buffer;
     struct iphdr *ip_reply = (struct iphdr *)(reply_buffer + sizeof(struct ethhdr));
     struct icmphdr *icmp_reply = (struct icmphdr *)(reply_buffer + sizeof(struct ethhdr) + sizeof(struct iphdr));
@@ -201,7 +201,7 @@ static void handle_recv_data(
     if (ntohs(rcv_req->h_proto) == ETH_P_ARP) {
         create_arp_req_reply(recv_data, recv_data_size);
     } else if (ntohs(rcv_req->h_proto) == ETH_P_IP) {
-        char ip_packet[ETHERMTU];
+        char ip_packet[ETH_FRAME_LEN];
         memcpy(ip_packet, recv_data + sizeof(struct ethhdr), recv_data_size - sizeof(struct ethhdr));
         print_ip_packet(ip_packet, recv_data_size - sizeof(struct ethhdr));
         create_icmp_req_reply(recv_data, recv_data_size);
