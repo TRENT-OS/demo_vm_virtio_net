@@ -98,11 +98,14 @@ static void print_ip_packet(
     }
     printf("\n");
 
-    struct in_addr saddr = {ip->saddr};
-    struct in_addr daddr = {ip->daddr};
+    char sz_saddr[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &(ip->saddr), sz_saddr, sizeof(sz_saddr));
+    char sz_daddr[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &(ip->daddr), sz_daddr, sizeof(sz_daddr));
+
     printf("IP Header - Version: IPv%d protocol: %d | src address: %s",
-           ip->version, ip->protocol, inet_ntoa(saddr));
-    printf(" | dest address: %s\n", inet_ntoa(daddr));
+           ip->version, ip->protocol, sz_saddr);
+    printf(" | dest address: %s\n", sz_daddr);
     printf("ICMP Header - Type: %d | id: %d | seq: %d\n",
            icmp->type, icmp->un.echo.id, icmp->un.echo.sequence);
     printf("\n");
