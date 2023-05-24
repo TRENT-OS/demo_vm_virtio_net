@@ -23,9 +23,17 @@
 #define IPV4_LENGTH 4
 
 typedef struct {
+    void *buf;
+    size_t len;
+} buffer_t;
+
+#define NULL_BUFFER (buffer_t) { .buf = NULL, .len = 0 }
+
+typedef struct {
     bool init_ok;
     virtqueue_device_t recv_virtqueue;
     virtqueue_driver_t send_virtqueue;
+    reply_buffer[ETH_FRAME_LEN];
 } ctx_t;
 
 static ctx_t the_ctx;
@@ -37,10 +45,54 @@ static ctx_t *get_ctx(void)
 }
 
 
-static uint16_t one_comp_checksum(
-    char const *data,
-    size_t length
+static bool is_null_buffer(buffer_t buffer)
+{
+    return !(buffer.buf);
+}
+
+
+static bool is_buffer_at_least(buffer_t buffer, size_t len)
+{
+    return !is_null_buffer(buffer) && (buffer.len >= len);
+}
+
+
+static void clear_buffer(
+    buffer_t buffer
 ) {
+    if (!is_null_buffer(buffer)) {
+        memset(buffer.buf, 0, buffer.len);
+    }
+}
+
+
+static buffer_t get_sub_buffer(
+    buffer_t buffer,
+    size_t offset
+) {
+    if (!is_buffer_at_least(buffer, offset)) {
+        return NULL_BUFFER;
+    }
+
+    return (buffer_t) {
+        .buf = (void *)((uintptr_t)buffer.buf + offset),
+        .len = buffer.len - offset,
+    };
+}
+
+
+static buffer_t get_sub_buffer_with_min_len(
+    buffer_t buffer,
+    size_t offset,
+    size_t min_len
+) {
+    buffer_t sub_buffer = get_sub_buffer(buffer, offset);
+    return is_buffer_at_least(sub_buffer, min_len) ? sub_buffer : NULL_BUFFER;
+}
+
+
+static uint16_t one_comp_checksum(char const *data, size_t length)
+{
     uint32_t sum = 0;
 
     for (int i = 0; i < length - 1; i += 2) {
@@ -62,14 +114,12 @@ static uint16_t one_comp_checksum(
 
 static int send_outgoing_packet(
     ctx_t *ctx,
-    char const *outgoing_data,
-    size_t outgoing_data_size
+    buffer_t buffer
 ) {
     virtqueue_driver_t *vq = &(ctx->send_virtqueue);
 
-    /* Must cast the const qualifier of 'outgoing_data' away. */
-    int err = camkes_virtqueue_driver_scatter_send_buffer(vq, (void *)outgoing_data,
-                                                          outgoing_data_size);
+    int err = camkes_virtqueue_driver_scatter_send_buffer(vq, buffer.buf,
+                                                          buffer.len);
     if (err) {
         ZF_LOGE("Failed to send data through virtqueue (%d)", err);
         return -1;
@@ -82,20 +132,23 @@ static int send_outgoing_packet(
 
 
 static void print_ip_packet(
-    char const *ip_buf,
-    size_t ip_length
+    buffer_t ip_packet
 ) {
     printf("Packet Contents:");
 
-    for (int i = 0; i < ip_length; i++) {
+    for (int i = 0; i < ip_packet.len; i++) {
         if (i % 15 == 0) {
             printf("\n%d:\t", i);
         }
-        printf("%x ", ip_buf[i]);
+        printf("%x ", ((uint8_t const *)ip_packet.buf)[i]);
     }
     printf("\n");
 
-    struct iphdr const *ip = (struct iphdr const *)ip_buf;
+    if (!is_buffer_at_least(ip_packet, sizeof(struct iphdr))) {
+        ZF_LOGE("packet too short to be IP");
+        return;
+    }
+    struct iphdr const *ip = ip_packet.buf;
 
     char sz_saddr[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &(ip->saddr), sz_saddr, sizeof(sz_saddr));
@@ -108,7 +161,14 @@ static void print_ip_packet(
 
     switch (ip->protocol) {
         case IPPROTO_ICMP: {
-            struct icmphdr const *icmp = (struct icmphdr const *)&ip_buf[sizeof(struct iphdr)];
+            buffer_t icmp_packet = get_sub_buffer_with_min_len(ip_packet,
+                                                               sizeof(struct iphdr),
+                                                               sizeof(struct icmphdr));
+            if (is_null_buffer(icmp_packet)) {
+                ZF_LOGE("packet too short to be ICMP");
+                break;
+            }
+            struct icmphdr const *icmp = icmp_packet.buf;
             printf("ICMP Header - Type: %d | id: %d | seq: %d\n",
                    icmp->type, icmp->un.echo.id, icmp->un.echo.sequence);
             break;
@@ -123,21 +183,38 @@ static void print_ip_packet(
 
 static void handle_packet_eth_arp(
     ctx_t *ctx,
-    char const *recv_data,
-    size_t recv_data_size
+    buffer_t *packet
 ) {
-    char reply_buffer[ETH_FRAME_LEN];
-
     //---------------------------------
     //| ethhdr | ether_arp            |
     //---------------------------------
-    struct ether_arp const *arp_req = (struct ether_arp const *)&recv_data[sizeof(struct ethhdr)];
+    buffer_t arp_packet = get_sub_buffer_with_min_len(packet,
+                                                      sizeof(struct ethhdr),
+                                                      sizeof(struct ether_arp));
+    if (is_null_buffer(arp_packet)) {
+        ZF_LOGE("Ignore invalid ARP packet");
+        return;
+    }
+    struct ether_arp const *arp_req = arp_packet.buf;
 
-    struct ethhdr *send_reply = (struct ethhdr *)reply_buffer;
-    struct ether_arp *arp_reply = (struct ether_arp *)&reply_buffer[sizeof(struct ethhdr)];
+    buffer_t packet_out = {
+        .buf = ctx->reply_buffer,
+        .len = sizeof(struct ethhdr) + sizeof(struct ether_arp),
+    };
 
+    clear_buffer(packet_out);
+
+    struct ethhdr *send_reply = (struct ethhdr *)packet_out.buf;
     memcpy(send_reply->h_dest, arp_req->arp_sha, ETH_ALEN);
     send_reply->h_proto = htons(ETH_P_ARP);
+
+    buffer_t arp_reply_packet = get_sub_buffer_with_min_len(packet_out, 0,
+                                                            sizeof(struct ethhdr));
+    if (is_null_buffer(arp_reply_packet)) {
+        ZF_LOGE("internal error");
+        return;
+    }
+    struct ether_arp *arp_reply = arp_reply_packet.buf;
 
     /* MAC Address */
     memcpy(arp_reply->arp_tha, arp_req->arp_sha, ETH_ALEN);
@@ -167,8 +244,7 @@ static void handle_packet_eth_arp(
     arp_reply->ea_hdr.ar_hln = ETH_ALEN;
     arp_reply->ea_hdr.ar_pln = IPV4_LENGTH;
 
-    int err = send_outgoing_packet(ctx, reply_buffer,
-                                   sizeof(struct ethhdr) + sizeof(struct ether_arp));
+    int err = send_outgoing_packet(ctx, packet_out);
     if (err) {
         ZF_LOGE("failed to send ARP reply (%d)", err);
     }
@@ -177,14 +253,32 @@ static void handle_packet_eth_arp(
 
 static void handle_packet_eth_ip(
     ctx_t *ctx,
-    char const *recv_data,
-    size_t recv_data_size
+    buffer_t packet
 ) {
-    print_ip_packet(&recv_data[sizeof(struct ethhdr)],
-                    recv_data_size - sizeof(struct ethhdr));
+    buffer_t eth_packet = get_sub_buffer_with_min_len(packet, 0,
+                                                      sizeof(struct ethhdr));
+    if (is_null_buffer(eth_packet)) {
+        ZF_LOGE("Ignore packet, too short for ethernet");
+        return;
+    }
+    struct ethhdr const *eth_req = eth_packet.buf;
 
-    struct ethhdr const *eth_req = (struct ethhdr const *)recv_data;
-    struct iphdr const *ip_req = (struct iphdr const *)&recv_data[sizeof(struct ethhdr)];
+    buffer_t ip_packet = get_sub_buffer_with_min_len(&eth_packet,
+                                                     sizeof(struct ethhdr),
+                                                     sizeof(struct iphdr));
+    if (is_null_buffer(ip_packet)) {
+        ZF_LOGE("Ignore packet, too short for IP");
+        return;
+    }
+    struct iphdr const *ip_req = ip_packet.buf;
+
+    print_ip_packet(ip_packet);
+
+    if (4 != ip_req->version) { /* don't need a endian conversion for uint8 */
+        ZF_LOGI("Ignore packet with unsupported IP version (IPv%u, protocol %u)",
+                ip_req->version, ip_req->protocol);
+        return;
+    }
 
     if (4 != ip_req->version) { /* don't need a endian conversion for uint8 */
         /* ignore packets with unsupported IP version */
@@ -200,35 +294,61 @@ static void handle_packet_eth_ip(
             return;
     }
 
-    struct icmphdr const *icmp_req = (struct icmphdr const *)&recv_data[sizeof(struct ethhdr) + sizeof(struct iphdr)];
+    buffer_t icmp_packet = get_sub_buffer_with_min_len(ip_packet,
+                                                       sizeof(struct iphdr),
+                                                       sizeof(struct icmphdr));
+    if (is_null_buffer(icmp_packet)) {
+        ZF_LOGE("Ignore packet, too short for ICMP");
+        return;
+    }
+    struct icmphdr const *icmp_req = icmp_packet.buf;
 
-    char reply_buffer[ETH_FRAME_LEN];
-    struct ethhdr *eth_reply = (struct ethhdr *)reply_buffer;
-    struct iphdr *ip_reply = (struct iphdr *)&reply_buffer[sizeof(struct ethhdr)];
-    struct icmphdr *icmp_reply = (struct icmphdr *)&reply_buffer[sizeof(struct ethhdr) + sizeof(struct iphdr)];
-    char *icmp_msg = (char *)(icmp_reply + 1);
+    buffer_t packet_out = {
+        .buf = ctx->reply_buffer,
+        .len = sizeof(struct ethhdr) + sizeof(struct iphdr) +
+               sizeof(struct icmphdr) + ICMP_MSG_SIZE,
+    };
 
+    struct ethhdr *eth_reply = (struct ethhdr *)packet_out.buf;
     memcpy(eth_reply->h_dest, eth_req->h_source, ETH_ALEN);
     memcpy(eth_reply->h_source, eth_req->h_dest, ETH_ALEN);
     eth_reply->h_proto = htons(ETH_P_IP);
 
+    buffer_t ip_reply_packet = get_sub_buffer_with_min_len(packet_out,
+                                                           sizeof(struct ethhdr),
+                                                           sizeof(struct iphdr));
+    if (is_null_buffer(ip_reply_packet)) {
+        ZF_LOGE("internal error");
+        return;
+    }
+    struct iphdr *ip_reply = ip_reply_packet.buf;
     memcpy(ip_reply, ip_req, sizeof(struct iphdr));
     in_addr_t saddr = ip_reply->saddr;
     ip_reply->saddr = ip_reply->daddr;
     ip_reply->daddr = saddr;
 
-    memset(icmp_msg, 0, ICMP_MSG_SIZE);
+    buffer_t icmp_reply_packet = get_sub_buffer_with_min_len(packet_out,
+                                                             sizeof(struct ethhdr) + sizeof(struct iphdr),
+                                                             sizeof(struct icmphdr));
+    if (is_null_buffer(icmp_reply_packet)) {
+        ZF_LOGE("internal error");
+        return;
+    }
+    struct icmphdr *icmp_reply = icmp_reply_packet.buf;
     icmp_reply->un.echo.sequence =  icmp_req->un.echo.sequence;
     icmp_reply->un.echo.id = icmp_req->un.echo.id;
     icmp_reply->type = ICMP_ECHOREPLY;
     icmp_reply->checksum = one_comp_checksum((char *)icmp_reply, sizeof(struct icmphdr) + ICMP_MSG_SIZE);
 
+    /* The ICMP message follows after header and contains just zeros. We have
+     * filled the buffer with zeros already, so there is nothing to do here.
+     */
+
     /* Need to set checksum to 0 before calculating checksum of the header */
     ip_reply->check = 0;
     ip_reply->check = one_comp_checksum((char *)ip_reply, sizeof(struct iphdr));
 
-    int err = send_outgoing_packet(ctx, reply_buffer,
-                                   sizeof(struct ethhdr) + sizeof(struct iphdr) + sizeof(struct icmphdr) + ICMP_MSG_SIZE);
+    int err = send_outgoing_packet(ctx, packet_out);
     if (err) {
         ZF_LOGE("failed to send ICMP reply (%d)", err);
     }
@@ -237,14 +357,13 @@ static void handle_packet_eth_ip(
 
 static void handle_recv_data(
     ctx_t *ctx,
-    char const *recv_data,
-    size_t recv_data_size
+    buffer_t packet
 ) {
     /* We are expecting the packets to be ethernet frames, so there must be a
      * ethernet header.
      */
-    if (recv_data_size < sizeof(struct ethhdr)) {
-        ZF_LOGE("Ignore invalid ethernet packet with length %zu", recv_data_size);
+    if (!is_buffer_at_least(packet, sizeof(struct ethhdr))) {
+        ZF_LOGE("Ignore invalid ethernet packet with length %zu", packet.len);
         return;
     }
     /* Actually, we should check the MAC address here to see whether this packet
@@ -253,14 +372,14 @@ static void handle_recv_data(
      * a dedicated MAC address configured, it makes up one on demand.
      */
 
-    struct ethhdr const *rcv_req = (struct ethhdr const *)recv_data;
+    struct ethhdr const *rcv_req = packet.buf;
     uint16_t protocol = ntohs(rcv_req->h_proto);
     switch (protocol) {
         case ETH_P_ARP:
-            handle_packet_eth_arp(ctx, recv_data, recv_data_size);
+            handle_packet_eth_arp(ctx, packet);
             break;
         case ETH_P_IP:
-            handle_packet_eth_ip(ctx, recv_data, recv_data_size);
+            handle_packet_eth_ip(ctx, packet);
             break;
         case ETH_P_IPV6:
             /* Seems the VM also sends IPv6 packets in parallel to IPv4. We
@@ -323,7 +442,8 @@ static void handle_recv_callback(
             continue;
         }
 
-        handle_recv_data(ctx, buf, len);
+        buffer_t packet = { .buf = buf, .len = len };
+        handle_recv_data(ctx, packet);
 
         vq->notify();
     }
