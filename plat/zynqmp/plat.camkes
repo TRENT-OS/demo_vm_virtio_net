@@ -1,21 +1,47 @@
 /*
+ * Copyright 2023, Hensoldt Cyber
  * Copyright 2019, DornerWorks
  *
- * This software may be distributed and modified according to the terms of
- * the BSD 2-Clause license. Note that NO WARRANTY is provided.
- * See "LICENSE_BSD2.txt" for details.
+ * SPDX-License-Identifier: BSD-2-Clause
  *
- * @TAG(DORNERWORKS_BSD)
+ *
+ * Platform specific settings for zynqmp (zcu102)
+ *
+ * Assuming QEMU is configured to provide 3 GiB RAM, this is the physical
+ * memory usage:
+ *
+ *    0x1'0000'0000 +---------------------------------------------+
+ *                  | seems QEMU reserves the top 24 MiB          |
+ *    0x0'FE80'0000 +---------------------------------------------+
+ *                  | free, used by seL4 kernel, VMM and apps     |
+ *    0x0'8200'0000 +---------------------------------------------+
+ *                  |                                             |
+ *                  |  0x8200'0000 +-------------------+          |
+ *                  |              | free              |          |
+ *                  |              +-------------------+          |
+ *                  |              | DTB               |          |
+ *                  |  0x80c0'0000 +-------------------+          |
+ *                  |              | initrd            |          |
+ *                  |  0x80a7'0000 +-------------------+          |
+ *                  |              | free              |          |
+ *                  |              +-------------------+          |
+ *                  |              | kernel            |          |
+ *                  |  0x8000'0000 +-------------------+          |
+ *                  |                                             |
+ *                  |  32 MiB for VM's emulated physical memory   |
+ *                  |                                             |
+ *    0x0'8000'0000 +---------------------------------------------+
+ *
  */
 
 #include <configurations/vm.h>
 
-#define VM_RAM_BASE 0x800000000
-#define VM_RAM_PADDR_BASE 0x800000000
-#define VM_RAM_SIZE 0x20000000
+#define VM_RAM_BASE         0x800000000
+#define VM_RAM_PADDR_BASE   0x800000000 // aim for a 1:1 mapping
+#define VM_RAM_SIZE         0x20000000 // 32 MiB (= 2^25)
 
-#define VM_DTB_ADDR 0x80C000000
-#define VM_INITRD_ADDR 0x80A700000 //(DTB_ADDR - INITRD_MAX_SIZE)
+#define VM_INITRD_ADDR      0x80a700000
+#define VM_DTB_ADDR         0x80c000000
 
 assembly {
     composition {
@@ -36,15 +62,16 @@ assembly {
             "kernel_entry_addr": VAR_STRINGIZE(VM_RAM_BASE),
         };
 
-        vm0.dtb = dtb([{"path": "/amba/serial@ff000000"},
-                          ]);
+        vm0.dtb = dtb([{
+            "path": "/amba/serial@ff000000"},
+        ]);
 
         vm0.mmios = [
             "0xf9060000:0x1000:12", // Interrupt Controller Virtual CPU interface (Virtual Machine view)
             ];
 
         vm0.untyped_mmios = [
-            "0x800000000:29", // Linux kernel memory regions
+            "0x800000000:25", // Linux kernel memory regions
         ];
 
         vm0.vm_image_config = {
