@@ -176,6 +176,21 @@ static void handle_packet_eth_ip(
 
     struct ethhdr const *eth_req = (struct ethhdr const *)recv_data;
     struct iphdr const *ip_req = (struct iphdr const *)&recv_data[sizeof(struct ethhdr)];
+
+    if (4 != ip_req->version) { /* don't need a endian conversion for uint8 */
+        /* ignore packets with unsupported IP version */
+        return;
+    }
+
+    switch (ip_req->protocol) { /* don't need a endian conversion for uint8 */
+        case IPPROTO_ICMP:
+            /* continue below */
+            break;
+        default:
+            /* ignore anything else (IPPROTO_TCP, IPPROTO_UDP ...) */
+            return;
+    }
+
     struct icmphdr const *icmp_req = (struct icmphdr const *)&recv_data[sizeof(struct ethhdr) + sizeof(struct iphdr)];
 
     char reply_buffer[ETH_FRAME_LEN];
