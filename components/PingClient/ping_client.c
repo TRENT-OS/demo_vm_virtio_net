@@ -185,6 +185,7 @@ static void handle_packet_eth_ip(
 
     struct ethhdr const *eth_req = (struct ethhdr const *)recv_data;
     struct iphdr const *ip_req = (struct iphdr const *)&recv_data[sizeof(struct ethhdr)];
+    char * icmp_msg_req = (char *)(recv_data + sizeof(struct ethhdr) + sizeof(struct iphdr) + sizeof(struct icmphdr));
 
     if (4 != ip_req->version) { /* don't need a endian conversion for uint8 */
         /* ignore packets with unsupported IP version */
@@ -217,7 +218,6 @@ static void handle_packet_eth_ip(
     ip_reply->saddr = ip_reply->daddr;
     ip_reply->daddr = saddr;
 
-    memset(icmp_msg, 0, ICMP_MSG_SIZE);
     icmp_reply->un.echo.sequence =  icmp_req->un.echo.sequence;
     icmp_reply->un.echo.id = icmp_req->un.echo.id;
     icmp_reply->type = ICMP_ECHOREPLY;
@@ -226,6 +226,9 @@ static void handle_packet_eth_ip(
     /* Need to set checksum to 0 before calculating checksum of the header */
     ip_reply->check = 0;
     ip_reply->check = one_comp_checksum((char *)ip_reply, sizeof(struct iphdr));
+
+    /* Copy data from request */
+    memcpy(icmp_msg, icmp_msg_req, ICMP_MSG_SIZE);
 
     int err = send_outgoing_packet(ctx, reply_buffer,
                                    sizeof(struct ethhdr) + sizeof(struct iphdr) + sizeof(struct icmphdr) + ICMP_MSG_SIZE);
