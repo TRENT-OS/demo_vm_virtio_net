@@ -6,7 +6,7 @@
 #
 
 echo "Testing ping on virtual interface:"
-ping 192.168.1.2 -v -c 5 -W 2
+ping 192.168.1.2 -c 5 -W 2
 # Success code for Ping: 0 (Ping returns non-zero value if packet count and timeout is not met)
 if [ $? -eq 0 ]
 then
