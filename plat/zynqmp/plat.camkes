@@ -1,0 +1,106 @@
+/*
+ * Copyright 2019, DornerWorks
+ *
+ * This software may be distributed and modified according to the terms of
+ * the BSD 2-Clause license. Note that NO WARRANTY is provided.
+ * See "LICENSE_BSD2.txt" for details.
+ *
+ * @TAG(DORNERWORKS_BSD)
+ */
+
+#include <configurations/vm.h>
+
+#define VM_RAM_BASE 0x800000000
+#define VM_RAM_PADDR_BASE 0x800000000
+#define VM_RAM_SIZE 0x20000000
+
+#define VM_DTB_ADDR 0x80C000000
+#define VM_INITRD_ADDR 0x80A700000 //(DTB_ADDR - INITRD_MAX_SIZE)
+
+assembly {
+    composition {
+        /* empty */
+    }
+    configuration {
+
+        vm0.vm_address_config = {
+            "ram_paddr_base": VAR_STRINGIZE(VM_RAM_PADDR_BASE),
+            "ram_base":       VAR_STRINGIZE(VM_RAM_BASE),
+            "ram_size":       VAR_STRINGIZE(VM_RAM_SIZE),
+            "dtb_addr":       VAR_STRINGIZE(VM_DTB_ADDR),
+            "initrd_addr":    VAR_STRINGIZE(VM_INITRD_ADDR),
+
+            /* This is not only the entry address, but also the load address
+             * in case the kernel image is a binary.
+             */
+            "kernel_entry_addr": VAR_STRINGIZE(VM_RAM_BASE),
+        };
+
+        vm0.dtb = dtb([{"path": "/amba/serial@ff000000"},
+                          ]);
+
+        vm0.mmios = [
+            "0xf9060000:0x1000:12", // Interrupt Controller Virtual CPU interface (Virtual Machine view)
+            ];
+
+        vm0.untyped_mmios = [
+            "0x800000000:29", // Linux kernel memory regions
+        ];
+
+        vm0.vm_image_config = {
+
+            "map_one_to_one": true,
+            "clean_cache": false, /* QEMU does not emulate caches anyway */
+
+            "provide_initrd": true,
+            "generate_dtb": true,
+            "provide_dtb": false,
+
+            "kernel_name": "linux",
+            "initrd_name": "linux-initrd",
+
+            "dtb_name": "linux-dtb",
+            "dtb_base_name": "",
+
+            "kernel_bootcmdline": "debug ignore_loglevel earlycon=cdns,mmio,0xff000000,115200n8 root=/dev/ram0 rw nosmp pci=nomsi,realloc=off,bios",
+                // console=hvc0
+                // nosmp
+                // rw       (Mount root device read-write on boot)
+                // debug    (Enable kernel debugging, events log level)
+                // loglevel=8
+                //     0 (KERN_EMERG)          system is unusable
+                //     1 (KERN_ALERT)          action must be taken immediately
+                //     2 (KERN_CRIT)           critical conditions
+                //     3 (KERN_ERR)            error conditions
+                //     4 (KERN_WARNING)        warning conditions
+                //     5 (KERN_NOTICE)         normal but significant condition
+                //     6 (KERN_INFO)           informational
+                //     7 (KERN_DEBUG)          debug-level messages
+                // ignore_loglevel
+                // root=/dev/ram0
+                // pci=nomsi,realloc=off,bios
+                // initcall_blacklist=clk_disable_unused
+                //   earlycon
+                //     uart[8250],[io|mmio|mmio16|mmio32,]<addr>[,options]
+                //        Start an early, polled-mode console on the 8250/16550
+                //        UART at the specified address. Access happens either via
+                //        8-bit ("mmio", default), 16-bit ("mmio16"), or 32-bit
+                //        ("mmio32"). 'options' are specified in the same format
+                //        described for  "console=ttyS<n>"; if unspecified, the h/w
+                //        is not re-initialized.
+                //     pl011,[mmio32,]<addr>
+                //        Start an early, polled-mode console on a pl011 serial port
+                //        at the specified address. The pl011 serial port must
+                //        already be setup and configured. Options are not yet
+                //        supported. If 'mmio32' is specified, then only the driver
+                //        will use only 32-bit accessors to read/write the device
+                //        registers.
+                //     sbi
+                //        Use RISC-V SBI for early console.
+
+            "kernel_stdout": "/amba/serial@ff000000",
+                // hvc0
+                // /pl011@9000000
+        };
+    }
+}
